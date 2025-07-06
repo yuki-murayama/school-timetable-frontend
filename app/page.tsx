@@ -1,19 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useAuth } from "@/hooks/use-auth"
 import { MainApp } from "@/components/main-app"
 import LoginPage from "@/components/login-page"
 
 export default function HomePage() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const { isAuthenticated, isLoading } = useAuth()
 
-  const handleLogin = () => {
-    setIsLoggedIn(true)
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
+      </div>
+    )
   }
 
-  const handleLogout = () => {
-    setIsLoggedIn(false)
-  }
-
-  return <>{isLoggedIn ? <MainApp onLogout={handleLogout} /> : <LoginPage onLogin={handleLogin} />}</>
+  return <>{isAuthenticated ? <MainApp /> : <LoginPage />}</>
 }

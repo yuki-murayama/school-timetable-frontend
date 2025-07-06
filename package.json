@@ -1,14 +1,17 @@
 {
-  "name": "my-v0-project",
+  "name": "school-timetable-frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "deploy": "wrangler pages deploy out",
+    "preview": "wrangler pages dev out"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.3.0",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",
@@ -37,6 +40,8 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -60,9 +65,11 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.0.6",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "jest": "^30.0.4",
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"

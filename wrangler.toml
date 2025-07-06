@@ -1,0 +1,7 @@
+name = "school-timetable-frontend"
+compatibility_date = "2024-07-01"
+
+[env.production]
+vars = { NODE_ENV = "production" }
+
+pages_build_output_dir = "out"

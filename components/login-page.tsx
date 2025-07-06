@@ -2,22 +2,23 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { School, User, Lock } from "lucide-react"
+import { School } from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
 
-interface LoginPageProps {
-  onLogin: () => void
-}
+export default function LoginPage() {
+  const { login } = useAuth()
+  const [isLoading, setIsLoading] = useState(false)
 
-export default function LoginPage({ onLogin }: LoginPageProps) {
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-
-  const handleLogin = () => {
-    // テスト用：無条件でログイン成功
-    onLogin()
+  const handleLogin = async () => {
+    setIsLoading(true)
+    try {
+      await login()
+    } catch (error) {
+      console.error('Login failed:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -30,45 +31,22 @@ export default function LoginPage({ onLogin }: LoginPageProps) {
           <CardTitle className="text-2xl font-bold">時間割生成システム</CardTitle>
           <CardDescription>学校の時間割を効率的に生成・管理するシステムです</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">メールアドレス</Label>
-            <div className="relative">
-              <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="example@school.edu"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+        <CardContent className="space-y-6">
+          <div className="text-center space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Auth0を使用したセキュアな認証システムでログインしてください
+            </p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">パスワード</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="password"
-                type="password"
-                placeholder="パスワードを入力"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </div>
-          <Button onClick={handleLogin} className="w-full" size="lg">
-            ログイン
+          <Button 
+            onClick={handleLogin} 
+            className="w-full" 
+            size="lg"
+            disabled={isLoading}
+          >
+            {isLoading ? "認証中..." : "Auth0でログイン"}
           </Button>
           <div className="text-center text-sm text-muted-foreground">
-            パスワードを忘れた場合は管理者にお問い合わせください
-          </div>
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
-              💡 <strong>テスト用:</strong> 任意の値を入力してログインボタンを押してください
-            </p>
+            認証に関する問題がある場合は管理者にお問い合わせください
           </div>
         </CardContent>
       </Card>
