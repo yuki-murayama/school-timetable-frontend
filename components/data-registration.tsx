@@ -1,6 +1,25 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import {
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -11,14 +30,63 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, Plus, Edit, Trash2, Save, Loader2 } from "lucide-react"
+import { Upload, Plus, Edit, Trash2, Save, Loader2, GripVertical } from "lucide-react"
 import { schoolApi, SchoolSettings, teacherApi, Teacher, subjectApi, Subject, classroomApi, Classroom, conditionsApi, SchoolConditions } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 
+interface SortableRowProps {
+  id: string
+  children: React.ReactNode
+}
+
+function SortableRow({ id, children }: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <TableRow
+      ref={setNodeRef}
+      style={style}
+      className={isDragging ? "bg-gray-50" : ""}
+    >
+      <TableCell className="w-8">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-gray-100 rounded"
+        >
+          <GripVertical className="w-4 h-4 text-gray-400" />
+        </div>
+      </TableCell>
+      {children}
+    </TableRow>
+  )
+}
+
 export function DataRegistration() {
   const { token } = useAuth()
   const { toast } = useToast()
+  
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
   
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null)
@@ -183,7 +251,16 @@ export function DataRegistration() {
       
       try {
         const teachersData = await teacherApi.getTeachers({ token })
-        setTeachers(teachersData)
+        // Sort by order field, then by name if no order
+        const sortedTeachers = teachersData.sort((a, b) => {
+          if (a.order != null && b.order != null) {
+            return a.order - b.order
+          }
+          if (a.order != null) return -1
+          if (b.order != null) return 1
+          return a.name.localeCompare(b.name)
+        })
+        setTeachers(sortedTeachers)
       } catch (error) {
         console.error('Error loading teachers:', error)
         toast({
@@ -211,7 +288,16 @@ export function DataRegistration() {
       
       try {
         const subjectsData = await subjectApi.getSubjects({ token })
-        setSubjects(subjectsData)
+        // Sort by order field, then by name if no order
+        const sortedSubjects = subjectsData.sort((a, b) => {
+          if (a.order != null && b.order != null) {
+            return a.order - b.order
+          }
+          if (a.order != null) return -1
+          if (b.order != null) return 1
+          return a.name.localeCompare(b.name)
+        })
+        setSubjects(sortedSubjects)
       } catch (error) {
         console.error('Error loading subjects:', error)
         toast({
@@ -239,7 +325,16 @@ export function DataRegistration() {
       
       try {
         const classroomsData = await classroomApi.getClassrooms({ token })
-        setClassrooms(classroomsData)
+        // Sort by order field, then by name if no order
+        const sortedClassrooms = classroomsData.sort((a, b) => {
+          if (a.order != null && b.order != null) {
+            return a.order - b.order
+          }
+          if (a.order != null) return -1
+          if (b.order != null) return 1
+          return a.name.localeCompare(b.name)
+        })
+        setClassrooms(sortedClassrooms)
       } catch (error) {
         console.error('Error loading classrooms:', error)
         // 教室データの読み込みエラーは重要ではないので、無視してフォールバック
@@ -642,6 +737,106 @@ export function DataRegistration() {
     }
   }
 
+  // Drag and drop handlers
+  const handleTeacherDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (active.id !== over?.id) {
+      setTeachers((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id)
+        const newIndex = items.findIndex((item) => item.id === over?.id)
+
+        const newItems = arrayMove(items, oldIndex, newIndex)
+        
+        // Update order fields and save to backend
+        const itemsWithOrder = newItems.map((item, index) => ({
+          ...item,
+          order: index,
+        }))
+        
+        // Save order changes to backend
+        if (token) {
+          teacherApi.saveTeachers(itemsWithOrder, { token }).catch((error) => {
+            console.error('Failed to save teacher order:', error)
+            toast({
+              title: "順序保存エラー",
+              description: "教師の順序保存に失敗しました",
+              variant: "destructive",
+            })
+          })
+        }
+        
+        return itemsWithOrder
+      })
+    }
+  }
+
+  const handleSubjectDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (active.id !== over?.id) {
+      setSubjects((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id)
+        const newIndex = items.findIndex((item) => item.id === over?.id)
+
+        const newItems = arrayMove(items, oldIndex, newIndex)
+        
+        // Update order fields and save to backend
+        const itemsWithOrder = newItems.map((item, index) => ({
+          ...item,
+          order: index,
+        }))
+        
+        // Save order changes to backend
+        if (token) {
+          subjectApi.saveSubjects(itemsWithOrder, { token }).catch((error) => {
+            console.error('Failed to save subject order:', error)
+            toast({
+              title: "順序保存エラー",
+              description: "教科の順序保存に失敗しました",
+              variant: "destructive",
+            })
+          })
+        }
+        
+        return itemsWithOrder
+      })
+    }
+  }
+
+  const handleClassroomDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (active.id !== over?.id) {
+      setClassrooms((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id)
+        const newIndex = items.findIndex((item) => item.id === over?.id)
+
+        const newItems = arrayMove(items, oldIndex, newIndex)
+        
+        // Update order fields and save to backend
+        const itemsWithOrder = newItems.map((item, index) => ({
+          ...item,
+          order: index,
+        }))
+        
+        // Save order changes to backend
+        if (token) {
+          classroomApi.saveClassrooms(itemsWithOrder, { token }).catch((error) => {
+            console.error('Failed to save classroom order:', error)
+            toast({
+              title: "順序保存エラー",
+              description: "教室の順序保存に失敗しました",
+              variant: "destructive",
+            })
+          })
+        }
+        
+        return itemsWithOrder
+      })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -791,67 +986,76 @@ export function DataRegistration() {
                   <span>読み込み中...</span>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>教師名</TableHead>
-                      <TableHead>担当科目</TableHead>
-                      <TableHead>担当学年</TableHead>
-                      <TableHead>操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {teachers.length === 0 ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleTeacherDragEnd}
+                >
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center text-gray-500 py-8">
-                          教師情報が登録されていません
-                        </TableCell>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>教師名</TableHead>
+                        <TableHead>担当科目</TableHead>
+                        <TableHead>担当学年</TableHead>
+                        <TableHead>操作</TableHead>
                       </TableRow>
-                    ) : (
-                      teachers.map((teacher) => (
-                        <TableRow key={teacher.id}>
-                          <TableCell className="font-medium">{teacher.name}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {teacher.subjects.map((subject, index) => (
-                                <Badge key={index} variant="secondary">
-                                  {subject}
-                                </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {teacher.grades.map((grade, index) => (
-                                <Badge key={index} variant="outline">
-                                  {grade}
-                                </Badge>
-                              ))}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => handleEditTeacher(teacher)}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => teacher.id && handleDeleteTeacher(teacher.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {teachers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                            教師情報が登録されていません
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        <SortableContext items={teachers.map(t => t.id || '')} strategy={verticalListSortingStrategy}>
+                          {teachers.map((teacher) => (
+                            <SortableRow key={teacher.id} id={teacher.id || ''}>
+                              <TableCell className="font-medium">{teacher.name}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {teacher.subjects.map((subject, index) => (
+                                    <Badge key={index} variant="secondary">
+                                      {subject}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {teacher.grades.map((grade, index) => (
+                                    <Badge key={index} variant="outline">
+                                      {grade}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex space-x-2">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => handleEditTeacher(teacher)}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => teacher.id && handleDeleteTeacher(teacher.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </SortableRow>
+                          ))}
+                        </SortableContext>
+                      )}
+                    </TableBody>
+                  </Table>
+                </DndContext>
               )}
               
               <Button 
@@ -889,61 +1093,70 @@ export function DataRegistration() {
                   <span>読み込み中...</span>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>教科名</TableHead>
-                      <TableHead>専用教室</TableHead>
-                      <TableHead>説明</TableHead>
-                      <TableHead>操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {subjects.length === 0 ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleSubjectDragEnd}
+                >
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center text-gray-500 py-8">
-                          教科情報が登録されていません
-                        </TableCell>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>教科名</TableHead>
+                        <TableHead>専用教室</TableHead>
+                        <TableHead>説明</TableHead>
+                        <TableHead>操作</TableHead>
                       </TableRow>
-                    ) : (
-                      subjects.map((subject) => (
-                        <TableRow key={subject.id}>
-                          <TableCell className="font-medium">{subject.name}</TableCell>
-                          <TableCell>
-                            {subject.specialClassroom ? (
-                              <Badge variant="outline">{subject.specialClassroom}</Badge>
-                            ) : (
-                              <span className="text-gray-400">なし</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-sm text-gray-600">
-                              {subject.description || "説明なし"}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => handleEditSubject(subject)}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => subject.id && handleDeleteSubject(subject.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {subjects.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                            教科情報が登録されていません
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        <SortableContext items={subjects.map(s => s.id || '')} strategy={verticalListSortingStrategy}>
+                          {subjects.map((subject) => (
+                            <SortableRow key={subject.id} id={subject.id || ''}>
+                              <TableCell className="font-medium">{subject.name}</TableCell>
+                              <TableCell>
+                                {subject.specialClassroom ? (
+                                  <Badge variant="outline">{subject.specialClassroom}</Badge>
+                                ) : (
+                                  <span className="text-gray-400">なし</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm text-gray-600">
+                                  {subject.description || "説明なし"}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex space-x-2">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => handleEditSubject(subject)}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => subject.id && handleDeleteSubject(subject.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </SortableRow>
+                          ))}
+                        </SortableContext>
+                      )}
+                    </TableBody>
+                  </Table>
+                </DndContext>
               )}
               
               <Button 
@@ -981,55 +1194,64 @@ export function DataRegistration() {
                   <span>読み込み中...</span>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>教室名</TableHead>
-                      <TableHead>教室タイプ</TableHead>
-                      <TableHead>数</TableHead>
-                      <TableHead>操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {classrooms.length === 0 ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleClassroomDragEnd}
+                >
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center text-gray-500 py-8">
-                          教室情報が登録されていません
-                        </TableCell>
+                        <TableHead className="w-8"></TableHead>
+                        <TableHead>教室名</TableHead>
+                        <TableHead>教室タイプ</TableHead>
+                        <TableHead>数</TableHead>
+                        <TableHead>操作</TableHead>
                       </TableRow>
-                    ) : (
-                      classrooms.map((classroom) => (
-                        <TableRow key={classroom.id}>
-                          <TableCell className="font-medium">{classroom.name}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{classroom.type}</Badge>
-                          </TableCell>
-                          <TableCell>
-                            <span className="text-sm">{classroom.count}室</span>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex space-x-2">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => handleEditClassroom(classroom)}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                onClick={() => classroom.id && handleDeleteClassroom(classroom.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
+                    </TableHeader>
+                    <TableBody>
+                      {classrooms.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                            教室情報が登録されていません
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        <SortableContext items={classrooms.map(c => c.id || '')} strategy={verticalListSortingStrategy}>
+                          {classrooms.map((classroom) => (
+                            <SortableRow key={classroom.id} id={classroom.id || ''}>
+                              <TableCell className="font-medium">{classroom.name}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{classroom.type}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-sm">{classroom.count}室</span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex space-x-2">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => handleEditClassroom(classroom)}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    onClick={() => classroom.id && handleDeleteClassroom(classroom.id)}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </SortableRow>
+                          ))}
+                        </SortableContext>
+                      )}
+                    </TableBody>
+                  </Table>
+                </DndContext>
               )}
               
               <Button 

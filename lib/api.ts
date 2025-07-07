@@ -209,6 +209,7 @@ export interface Teacher {
   name: string
   subjects: string[]
   grades: string[]
+  order?: number
 }
 
 export interface Subject {
@@ -216,6 +217,7 @@ export interface Subject {
   name: string
   specialClassroom?: string
   description?: string
+  order?: number
 }
 
 export interface Classroom {
@@ -223,6 +225,7 @@ export interface Classroom {
   name: string
   type: string
   count: number
+  order?: number
 }
 
 export interface CustomCondition {
