@@ -1158,14 +1158,17 @@ export function DataRegistration() {
               <Label htmlFor="special-classroom">専用教室（任意）</Label>
               {classrooms.length > 0 && !isClassroomsLoading ? (
                 <Select 
-                  value={subjectFormData.specialClassroom} 
-                  onValueChange={(value) => setSubjectFormData(prev => ({ ...prev, specialClassroom: value }))}
+                  value={subjectFormData.specialClassroom || "none"} 
+                  onValueChange={(value) => setSubjectFormData(prev => ({ 
+                    ...prev, 
+                    specialClassroom: value === "none" ? "" : value 
+                  }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="教室を選択" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">選択なし</SelectItem>
+                    <SelectItem value="none">選択なし</SelectItem>
                     {classrooms.map((classroom) => (
                       <SelectItem key={classroom.id} value={classroom.name}>
                         {classroom.name}
