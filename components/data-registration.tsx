@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Upload, Plus, Edit, Trash2, Save, Loader2 } from "lucide-react"
-import { schoolApi, SchoolSettings, teacherApi, Teacher, subjectApi, Subject, classroomApi, Classroom } from "@/lib/api"
+import { schoolApi, SchoolSettings, teacherApi, Teacher, subjectApi, Subject, classroomApi, Classroom, conditionsApi, SchoolConditions } from "@/lib/api"
 import { useAuth } from "@/hooks/use-auth"
 import { useToast } from "@/hooks/use-toast"
 
@@ -62,6 +62,11 @@ export function DataRegistration() {
     type: "",
     count: 1
   })
+
+  // 条件設定用のstate
+  const [conditions, setConditions] = useState("")
+  const [isConditionsLoading, setIsConditionsLoading] = useState(true)
+  const [isConditionsSaving, setIsConditionsSaving] = useState(false)
 
   const [classSettings, setClassSettings] = useState<SchoolSettings>({
     grade1Classes: 0,
@@ -244,6 +249,31 @@ export function DataRegistration() {
     }
 
     loadClassrooms()
+  }, [token, toast])
+
+  // 条件設定を読み込み
+  useEffect(() => {
+    const loadConditions = async () => {
+      if (!token) {
+        setIsConditionsLoading(false)
+        return
+      }
+      
+      setIsConditionsLoading(true)
+      
+      try {
+        const conditionsData = await conditionsApi.getConditions({ token })
+        setConditions(conditionsData.conditions)
+      } catch (error) {
+        console.error('Error loading conditions:', error)
+        // 条件設定の読み込みエラーは無視して空文字列で継続
+        setConditions("")
+      } finally {
+        setIsConditionsLoading(false)
+      }
+    }
+
+    loadConditions()
   }, [token, toast])
 
   // 学校設定を保存
@@ -580,6 +610,35 @@ export function DataRegistration() {
       })
     } finally {
       setIsClassroomsSaving(false)
+    }
+  }
+
+  // 条件設定の保存機能
+  const handleSaveConditions = async () => {
+    if (!token) {
+      toast({
+        title: "認証エラー",
+        description: "ログインが必要です",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsConditionsSaving(true)
+    try {
+      await conditionsApi.saveConditions({ conditions }, { token })
+      toast({
+        title: "保存完了",
+        description: "条件設定を保存しました",
+      })
+    } catch (error) {
+      toast({
+        title: "保存エラー",
+        description: "条件設定の保存に失敗しました",
+        variant: "destructive",
+      })
+    } finally {
+      setIsConditionsSaving(false)
     }
   }
 
@@ -996,10 +1055,25 @@ export function DataRegistration() {
               <CardDescription>時間割生成時の特別な条件を設定します</CardDescription>
             </CardHeader>
             <CardContent>
-              <Textarea placeholder="例：体育は午後に配置、数学は1時間目を避ける..." rows={6} />
-              <Button className="mt-4">
-                <Save className="w-4 h-4 mr-2" />
-                条件を保存
+              <Textarea 
+                placeholder={isConditionsLoading ? "読み込み中..." : "例：体育は午後に配置、数学は1時間目を避ける..."} 
+                rows={6}
+                value={conditions}
+                onChange={(e) => setConditions(e.target.value)}
+                disabled={isConditionsLoading}
+              />
+              
+              <Button 
+                className="w-full mt-6"
+                onClick={handleSaveConditions}
+                disabled={isConditionsLoading || isConditionsSaving}
+              >
+                {isConditionsSaving ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4 mr-2" />
+                )}
+                {isConditionsSaving ? "保存中..." : "条件設定を保存"}
               </Button>
             </CardContent>
           </Card>
@@ -1055,7 +1129,7 @@ export function DataRegistration() {
                     value={newSubject}
                     onChange={(e) => setNewSubject(e.target.value)}
                     placeholder="科目名を入力"
-                    onKeyPress={(e) => e.key === 'Enter' && handleAddSubjectToTeacher()}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSubjectToTeacher()}
                   />
                 )}
                 <Button onClick={handleAddSubjectToTeacher} size="sm">

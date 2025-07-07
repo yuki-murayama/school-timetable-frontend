@@ -307,6 +307,20 @@ export const classroomApi = {
   },
 }
 
+export interface SchoolConditions {
+  conditions: string
+}
+
+export const conditionsApi = {
+  async getConditions(options?: ApiOptions): Promise<SchoolConditions> {
+    return apiClient.get<SchoolConditions>('/api/frontend/school/conditions', options)
+  },
+
+  async saveConditions(conditions: SchoolConditions, options?: ApiOptions): Promise<SchoolConditions> {
+    return apiClient.put<SchoolConditions>('/api/frontend/school/conditions', conditions, options)
+  },
+}
+
 export const teachersApi = {
   async getTeachers(options?: ApiOptions): Promise<Teacher[]> {
     return apiClient.get<Teacher[]>('/api/teachers', options)
@@ -343,23 +357,6 @@ export const classroomsApi = {
   },
 }
 
-export const conditionsApi = {
-  async getConditions(options?: ApiOptions): Promise<CustomCondition[]> {
-    return apiClient.get<CustomCondition[]>('/api/conditions', options)
-  },
-
-  async createCondition(condition: Omit<CustomCondition, 'id'>, options?: ApiOptions): Promise<CustomCondition> {
-    return apiClient.post<CustomCondition>('/api/conditions', condition, options)
-  },
-
-  async updateCondition(id: string, condition: Partial<CustomCondition>, options?: ApiOptions): Promise<CustomCondition> {
-    return apiClient.put<CustomCondition>(`/api/conditions/${id}`, condition, options)
-  },
-
-  async deleteCondition(id: string, options?: ApiOptions): Promise<void> {
-    return apiClient.delete(`/api/conditions/${id}`, options)
-  },
-}
 
 export const timetableApi = {
   async bulkGenerate(id: string, request: BulkGenerationRequest, options?: ApiOptions): Promise<BulkGenerationResult> {
