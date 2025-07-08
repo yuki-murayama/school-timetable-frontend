@@ -34,7 +34,7 @@ export default function LoginPage() {
         <CardContent className="space-y-6">
           <div className="text-center space-y-2">
             <p className="text-sm text-muted-foreground">
-              Auth0を使用したセキュアな認証システムでログインしてください
+              Clerkを使用したセキュアな認証システムでログインしてください
             </p>
           </div>
           <Button 
@@ -43,7 +43,7 @@ export default function LoginPage() {
             size="lg"
             disabled={isLoading}
           >
-            {isLoading ? "認証中..." : "Auth0でログイン"}
+            {isLoading ? "認証中..." : "ログイン"}
           </Button>
           <div className="text-center text-sm text-muted-foreground">
             認証に関する問題がある場合は管理者にお問い合わせください

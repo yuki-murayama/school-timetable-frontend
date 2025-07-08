@@ -1,6 +1,6 @@
 'use client'
 
-import { useAuth0 } from '@auth0/auth0-react'
+import { useUser, useAuth as useClerkAuth } from '@clerk/nextjs'
 import { useEffect, useState } from 'react'
 import { UserRole, Permission, userRoles } from '@/lib/auth-config'
 import { authApi, UserInfo } from '@/lib/auth-api'
@@ -11,23 +11,17 @@ export interface AuthUser extends UserInfo {
 }
 
 export function useAuth() {
-  const {
-    isAuthenticated,
-    isLoading,
-    user,
-    loginWithRedirect,
-    logout,
-    getAccessTokenSilently
-  } = useAuth0()
+  const { isLoaded, isSignedIn, user } = useUser()
+  const { getToken } = useClerkAuth()
 
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [token, setToken] = useState<string | null>(null)
 
   useEffect(() => {
     const loadUserData = async () => {
-      if (isAuthenticated && user) {
+      if (isSignedIn && user) {
         try {
-          const accessToken = await getAccessTokenSilently()
+          const accessToken = await getToken()
           setToken(accessToken)
 
           let userInfo: UserInfo
@@ -39,12 +33,15 @@ export function useAuth() {
           } catch (apiError) {
             console.warn('Backend API not available, using fallback auth:', apiError)
             
+            // Get roles from Clerk metadata
+            const clerkRoles = user.publicMetadata?.roles as string[] || ['school_admin']
+            
             userInfo = {
-              sub: user.sub || '',
-              email: user.email || '',
-              name: user.name || '',
-              picture: user.picture,
-              roles: ['school_admin'],
+              sub: user.id,
+              email: user.emailAddresses[0]?.emailAddress || '',
+              name: user.fullName || user.firstName || '',
+              picture: user.imageUrl,
+              roles: clerkRoles,
               permissions: []
             }
             permissions = [
@@ -75,7 +72,7 @@ export function useAuth() {
     }
 
     loadUserData()
-  }, [isAuthenticated, user, getAccessTokenSilently])
+  }, [isSignedIn, user, getToken])
 
   const hasPermission = (permission: Permission): boolean => {
     if (!authUser) {
@@ -103,20 +100,16 @@ export function useAuth() {
   }
 
   const login = () => {
-    loginWithRedirect()
+    window.location.href = '/sign-in'
   }
 
   const logoutUser = () => {
-    logout({ 
-      logoutParams: { 
-        returnTo: window.location.origin 
-      } 
-    })
+    window.location.href = '/sign-out'
   }
 
   return {
-    isAuthenticated,
-    isLoading,
+    isAuthenticated: isSignedIn,
+    isLoading: !isLoaded,
     user: authUser,
     token,
     login,
