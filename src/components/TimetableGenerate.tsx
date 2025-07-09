@@ -7,9 +7,15 @@ import { Switch } from "./ui/switch"
 import { Input } from "./ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
 import { Separator } from "./ui/separator"
-import { Wand2, Settings } from "lucide-react"
+import { Wand2, Settings, Loader2, CheckCircle, AlertCircle } from "lucide-react"
+import { timetableApi, type TimetableGenerationResponse } from "../lib/api"
+import { useAuth } from "../hooks/use-auth"
+import { useToast } from "../hooks/use-toast"
 
 export function TimetableGenerate() {
+  const { token } = useAuth()
+  const { toast } = useToast()
+  
   const [isDetailMode, setIsDetailMode] = useState(false)
   const [simpleCondition, setSimpleCondition] = useState("")
   const [detailConditions, setDetailConditions] = useState({
@@ -18,8 +24,62 @@ export function TimetableGenerate() {
     customConditions: "",
   })
 
-  const handleGenerate = () => {
-    console.log("時間割生成処理")
+  // 時間割生成の状態管理
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generationResult, setGenerationResult] = useState<TimetableGenerationResponse | null>(null)
+  const [generationError, setGenerationError] = useState<string | null>(null)
+
+  const handleGenerate = async () => {
+    if (!token) {
+      toast({
+        title: "認証エラー",
+        description: "ログインが必要です",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsGenerating(true)
+    setGenerationError(null)
+    setGenerationResult(null)
+
+    try {
+      console.log("時間割生成開始...")
+      
+      // 生成オプションを準備
+      const options: Record<string, any> = {}
+      
+      if (isDetailMode) {
+        options.noConsecutive = detailConditions.noConsecutive
+        options.customConditions = detailConditions.customConditions
+      } else {
+        options.simpleCondition = simpleCondition
+      }
+
+      const result = await timetableApi.generateTimetable({ options }, { token })
+      
+      setGenerationResult(result)
+      toast({
+        title: "生成完了",
+        description: "時間割が正常に生成されました",
+      })
+      
+      console.log("時間割生成完了:", result)
+      
+    } catch (error: any) {
+      console.error("時間割生成エラー:", error)
+      
+      const errorMessage = error.message || "時間割生成に失敗しました"
+      setGenerationError(errorMessage)
+      
+      toast({
+        title: "生成エラー",
+        description: errorMessage,
+        variant: "destructive",
+      })
+    } finally {
+      setIsGenerating(false)
+    }
   }
 
   return (
@@ -146,14 +206,99 @@ export function TimetableGenerate() {
           )}
 
           <div className="flex justify-end space-x-4 pt-4">
-            <Button variant="outline">条件をリセット</Button>
-            <Button onClick={handleGenerate} size="lg" className="px-8">
-              <Wand2 className="w-4 h-4 mr-2" />
-              時間割を生成
+            <Button variant="outline" disabled={isGenerating}>条件をリセット</Button>
+            <Button onClick={handleGenerate} size="lg" className="px-8" disabled={isGenerating}>
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  生成中...
+                </>
+              ) : (
+                <>
+                  <Wand2 className="w-4 h-4 mr-2" />
+                  時間割を生成
+                </>
+              )}
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* 生成結果の表示 */}
+      {(generationResult || generationError) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              {generationResult ? (
+                <>
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <span>生成完了</span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                  <span>生成エラー</span>
+                </>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {generationResult ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">教師数</p>
+                    <p className="text-2xl font-bold">{generationResult.metadata.dataUsed.teachersCount}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">教科数</p>
+                    <p className="text-2xl font-bold">{generationResult.metadata.dataUsed.subjectsCount}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">教室数</p>
+                    <p className="text-2xl font-bold">{generationResult.metadata.dataUsed.classroomsCount}</p>
+                  </div>
+                </div>
+                
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <p className="text-sm text-green-800">
+                    <strong>時間割ID:</strong> {generationResult.timetable.id}
+                  </p>
+                  <p className="text-sm text-green-800">
+                    <strong>生成日時:</strong> {new Date(generationResult.timetable.createdAt).toLocaleString('ja-JP')}
+                  </p>
+                  <p className="text-sm text-green-800 mt-2">
+                    時間割が正常に生成されました。「時間割参照」画面で詳細を確認できます。
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-red-50 p-4 rounded-lg">
+                <p className="text-sm text-red-800">
+                  {generationError}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 生成中の進行状況 */}
+      {isGenerating && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center space-x-4">
+              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+              <div>
+                <p className="text-sm font-medium">時間割を生成中...</p>
+                <p className="text-xs text-muted-foreground">
+                  この処理には10-30秒かかる場合があります
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

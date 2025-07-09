@@ -1,19 +1,14 @@
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "./ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
 import { Badge } from "./ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table"
 import { Input } from "./ui/input"
-import { Calendar, Edit, Eye, ArrowLeft, User } from "lucide-react"
-
-interface Timetable {
-  id: string
-  name: string
-  createdAt: string
-  status: "active" | "draft"
-}
+import { Calendar, Edit, Eye, ArrowLeft, User, Loader2 } from "lucide-react"
+import { timetableApi, timetableUtils, type TimetableListItem, type TimetableDetail } from "../lib/api"
+import { useToast } from "../hooks/use-toast"
 
 interface TeacherSchedule {
   period: string
@@ -26,8 +21,11 @@ interface TeacherSchedule {
 }
 
 export function TimetableView() {
+  const { toast } = useToast()
+  
   const [currentView, setCurrentView] = useState<"list" | "detail" | "edit" | "teacher">("list")
-  const [selectedTimetable, setSelectedTimetable] = useState<Timetable | null>(null)
+  const [selectedTimetable, setSelectedTimetable] = useState<TimetableListItem | null>(null)
+  const [selectedTimetableDetail, setSelectedTimetableDetail] = useState<TimetableDetail | null>(null)
   const [selectedGrade, setSelectedGrade] = useState("1")
   const [selectedTeacher, setSelectedTeacher] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState(false)
@@ -38,7 +36,13 @@ export function TimetableView() {
     period: string
     day: string
   } | null>(null)
-  const [timetableData, setTimetableData] = useState([
+  
+  // API統合のためのローディング状態
+  const [isLoadingTimetables, setIsLoadingTimetables] = useState(false)
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  // モックデータ（フォールバック用）
+  const mockTimetableData = [
     {
       period: "1",
       mon: { subject: "数学", teacher: "田中" },
@@ -93,13 +97,86 @@ export function TimetableView() {
       fri: { subject: "道徳", teacher: "高橋" },
       sat: null,
     },
-  ])
+  ]
 
-  const [timetables, setTimetables] = useState<Timetable[]>([
+  const mockTimetables: TimetableListItem[] = [
     { id: "1", name: "2024年度 第1学期", createdAt: "2024-03-15", status: "active" },
     { id: "2", name: "2024年度 第2学期", createdAt: "2024-08-20", status: "draft" },
     { id: "3", name: "2024年度 第3学期", createdAt: "2024-12-10", status: "draft" },
-  ])
+  ]
+
+  const [timetableData, setTimetableData] = useState(mockTimetableData)
+  const [timetables, setTimetables] = useState<TimetableListItem[]>(mockTimetables)
+
+  // API統合のロジック
+  const loadTimetables = async () => {
+    setIsLoadingTimetables(true)
+    try {
+      // 認証不要のため、tokenを削除
+      const result = await timetableApi.getTimetables()
+      setTimetables(result)
+    } catch (error) {
+      console.error("時間割一覧の取得に失敗しました:", error)
+      // モックデータにフォールバック
+      setTimetables(mockTimetables)
+      toast({
+        title: "注意",
+        description: "サーバーからデータを取得できませんでした。デモデータを表示しています。",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingTimetables(false)
+    }
+  }
+
+  const loadTimetableDetail = async (timetableId: string) => {
+    setIsLoadingDetail(true)
+    try {
+      // 認証不要のため、tokenを削除
+      const result = await timetableApi.getTimetableDetail(timetableId)
+      setSelectedTimetableDetail(result)
+      
+      // 時間割データを表示用に変換（二重ネスト対応）
+      const timetableData = result.timetable?.timetable || result.timetable
+      const displayData = timetableUtils.convertToDisplayFormat(
+        timetableData, 
+        parseInt(selectedGrade), 
+        1
+      )
+      setTimetableData(displayData)
+      
+    } catch (error) {
+      console.error("時間割詳細の取得に失敗しました:", error)
+      // モックデータにフォールバック
+      setTimetableData(mockTimetableData)
+      toast({
+        title: "注意",
+        description: "サーバーから時間割データを取得できませんでした。デモデータを表示しています。",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoadingDetail(false)
+    }
+  }
+
+  // 初期化時に時間割一覧を取得
+  useEffect(() => {
+    loadTimetables()
+  }, [])
+
+  // 学年が変更された時に時間割データを更新
+  useEffect(() => {
+    if (selectedTimetableDetail) {
+      // 時間割データを表示用に変換（二重ネスト対応）
+      const timetableData = selectedTimetableDetail.timetable?.timetable || selectedTimetableDetail.timetable
+      const displayData = timetableUtils.convertToDisplayFormat(
+        timetableData, 
+        parseInt(selectedGrade), 
+        1
+      )
+      setTimetableData(displayData)
+    }
+  }, [selectedGrade, selectedTimetableDetail])
 
   // 教師ごとの時間割データを生成する関数
   const generateTeacherSchedule = (teacherName: string): TeacherSchedule[] => {
@@ -186,9 +263,10 @@ export function TimetableView() {
     setCurrentView("teacher")
   }
 
-  const handleViewTimetable = (timetable: Timetable) => {
+  const handleViewTimetable = (timetable: TimetableListItem) => {
     setSelectedTimetable(timetable)
     setCurrentView("detail")
+    loadTimetableDetail(timetable.id)
   }
 
   const handleEditTimetable = () => {
@@ -212,15 +290,43 @@ export function TimetableView() {
     setTempTitle(selectedTimetable?.name || "")
   }
 
-  const handleTitleSave = () => {
-    if (selectedTimetable && tempTitle.trim()) {
+  const handleTitleSave = async () => {
+    if (!selectedTimetable || !tempTitle.trim()) {
+      setEditingTitle(false)
+      return
+    }
+    
+    setIsSaving(true)
+    try {
+      // 認証不要のため、tokenを削除
+      await timetableApi.updateTimetable(
+        selectedTimetable.id,
+        { name: tempTitle.trim() }
+      )
+      
+      // 時間割一覧を更新
       const updatedTimetables = timetables.map((t) =>
         t.id === selectedTimetable.id ? { ...t, name: tempTitle.trim() } : t,
       )
       setTimetables(updatedTimetables)
       setSelectedTimetable({ ...selectedTimetable, name: tempTitle.trim() })
+      
+      toast({
+        title: "保存完了",
+        description: "時間割名が正常に更新されました。",
+      })
+      
+    } catch (error) {
+      console.error("時間割の更新に失敗しました:", error)
+      toast({
+        title: "保存エラー",
+        description: "時間割名の更新に失敗しました。",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+      setEditingTitle(false)
     }
-    setEditingTitle(false)
   }
 
   const handleTitleCancel = () => {
@@ -247,28 +353,35 @@ export function TimetableView() {
             <CardDescription>時間割を選択して詳細を確認できます</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {timetables.map((timetable) => (
-                <div
-                  key={timetable.id}
-                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div>
-                      <h3 className="font-semibold">{timetable.name}</h3>
-                      <p className="text-sm text-muted-foreground">作成日: {timetable.createdAt}</p>
+            {isLoadingTimetables ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                <span>時間割一覧を読み込んでいます...</span>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {timetables.map((timetable) => (
+                  <div
+                    key={timetable.id}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div>
+                        <h3 className="font-semibold">{timetable.name}</h3>
+                        <p className="text-sm text-muted-foreground">作成日: {timetable.createdAt}</p>
+                      </div>
+                      <Badge variant={timetable.status === "active" ? "default" : "secondary"}>
+                        {timetable.status === "active" ? "運用中" : "下書き"}
+                      </Badge>
                     </div>
-                    <Badge variant={timetable.status === "active" ? "default" : "secondary"}>
-                      {timetable.status === "active" ? "運用中" : "下書き"}
-                    </Badge>
+                    <Button onClick={() => handleViewTimetable(timetable)} disabled={isLoadingDetail}>
+                      <Eye className="w-4 h-4 mr-2" />
+                      詳細を見る
+                    </Button>
                   </div>
-                  <Button onClick={() => handleViewTimetable(timetable)}>
-                    <Eye className="w-4 h-4 mr-2" />
-                    詳細を見る
-                  </Button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -372,8 +485,15 @@ export function TimetableView() {
                       if (e.key === "Escape") handleTitleCancel()
                     }}
                   />
-                  <Button size="sm" onClick={handleTitleSave}>
-                    保存
+                  <Button size="sm" onClick={handleTitleSave} disabled={isSaving}>
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        保存中...
+                      </>
+                    ) : (
+                      "保存"
+                    )}
                   </Button>
                   <Button size="sm" variant="outline" onClick={handleTitleCancel}>
                     キャンセル
@@ -421,89 +541,96 @@ export function TimetableView() {
             </Tabs>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="class1">
-              <TabsList className="mb-4">
-                <TabsTrigger value="class1">1組</TabsTrigger>
-                <TabsTrigger value="class2">2組</TabsTrigger>
-                <TabsTrigger value="class3">3組</TabsTrigger>
-                <TabsTrigger value="class4">4組</TabsTrigger>
-              </TabsList>
+            {isLoadingDetail ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                <span>時間割詳細を読み込んでいます...</span>
+              </div>
+            ) : (
+              <Tabs defaultValue="class1">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="class1">1組</TabsTrigger>
+                  <TabsTrigger value="class2">2組</TabsTrigger>
+                  <TabsTrigger value="class3">3組</TabsTrigger>
+                  <TabsTrigger value="class4">4組</TabsTrigger>
+                </TabsList>
 
-              <TabsContent value="class1">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-16">時限</TableHead>
-                        <TableHead className="w-32">月</TableHead>
-                        <TableHead className="w-32">火</TableHead>
-                        <TableHead className="w-32">水</TableHead>
-                        <TableHead className="w-32">木</TableHead>
-                        <TableHead className="w-32">金</TableHead>
-                        <TableHead className="w-32">土</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {timetableData.map((row) => (
-                        <TableRow key={row.period}>
-                          <TableCell className="font-medium">{row.period}</TableCell>
-                          {["mon", "tue", "wed", "thu", "fri", "sat"].map((day) => {
-                            const cellData = row[day as keyof typeof row] as { subject: string; teacher: string } | null
-                            return (
-                              <TableCell key={day}>
-                                {cellData ? (
-                                  currentView === "edit" ? (
-                                    <div
-                                      className="p-3 border border-dashed border-gray-300 rounded cursor-move hover:bg-gray-50 transition-colors min-h-[60px] flex flex-col justify-center"
-                                      draggable
-                                      onDragStart={(e) =>
-                                        handleDragStart(e, cellData.subject, cellData.teacher, row.period, day)
-                                      }
-                                      onDragOver={handleDragOver}
-                                      onDrop={(e) => handleDrop(e, row.period, day)}
-                                    >
-                                      <div className="font-medium text-sm">{cellData.subject}</div>
-                                      <div className="text-xs text-muted-foreground">{cellData.teacher}</div>
-                                    </div>
-                                  ) : (
-                                    <div className="flex flex-col">
-                                      <div className="font-medium">{cellData.subject}</div>
-                                      <button
-                                        className="text-sm text-blue-600 hover:text-blue-800 hover:underline text-left"
-                                        onClick={() => handleTeacherClick(cellData.teacher)}
-                                      >
-                                        {cellData.teacher}
-                                      </button>
-                                    </div>
-                                  )
-                                ) : (
-                                  currentView === "edit" && (
-                                    <div
-                                      className="p-3 border border-dashed border-gray-200 rounded min-h-[60px] hover:bg-gray-50 transition-colors"
-                                      onDragOver={handleDragOver}
-                                      onDrop={(e) => handleDrop(e, row.period, day)}
-                                    >
-                                      <div className="text-xs text-gray-400 text-center">空き時間</div>
-                                    </div>
-                                  )
-                                )}
-                              </TableCell>
-                            )
-                          })}
+                <TabsContent value="class1">
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-16">時限</TableHead>
+                          <TableHead className="w-32">月</TableHead>
+                          <TableHead className="w-32">火</TableHead>
+                          <TableHead className="w-32">水</TableHead>
+                          <TableHead className="w-32">木</TableHead>
+                          <TableHead className="w-32">金</TableHead>
+                          <TableHead className="w-32">土</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-                {currentView === "edit" && (
-                  <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-800">
-                      💡 科目をドラッグ&ドロップで移動できます。問題がある場合は自動的にエラーメッセージが表示されます。
-                    </p>
+                      </TableHeader>
+                      <TableBody>
+                        {timetableData.map((row) => (
+                          <TableRow key={row.period}>
+                            <TableCell className="font-medium">{row.period}</TableCell>
+                            {["mon", "tue", "wed", "thu", "fri", "sat"].map((day) => {
+                              const cellData = row[day as keyof typeof row] as { subject: string; teacher: string } | null
+                              return (
+                                <TableCell key={day}>
+                                  {cellData ? (
+                                    currentView === "edit" ? (
+                                      <div
+                                        className="p-3 border border-dashed border-gray-300 rounded cursor-move hover:bg-gray-50 transition-colors min-h-[60px] flex flex-col justify-center"
+                                        draggable
+                                        onDragStart={(e) =>
+                                          handleDragStart(e, cellData.subject, cellData.teacher, row.period, day)
+                                        }
+                                        onDragOver={handleDragOver}
+                                        onDrop={(e) => handleDrop(e, row.period, day)}
+                                      >
+                                        <div className="font-medium text-sm">{cellData.subject}</div>
+                                        <div className="text-xs text-muted-foreground">{cellData.teacher}</div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex flex-col">
+                                        <div className="font-medium">{cellData.subject}</div>
+                                        <button
+                                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline text-left"
+                                          onClick={() => handleTeacherClick(cellData.teacher)}
+                                        >
+                                          {cellData.teacher}
+                                        </button>
+                                      </div>
+                                    )
+                                  ) : (
+                                    currentView === "edit" && (
+                                      <div
+                                        className="p-3 border border-dashed border-gray-200 rounded min-h-[60px] hover:bg-gray-50 transition-colors"
+                                        onDragOver={handleDragOver}
+                                        onDrop={(e) => handleDrop(e, row.period, day)}
+                                      >
+                                        <div className="text-xs text-gray-400 text-center">空き時間</div>
+                                      </div>
+                                    )
+                                  )}
+                                </TableCell>
+                              )
+                            })}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
-                )}
-              </TabsContent>
-            </Tabs>
+                  {currentView === "edit" && (
+                    <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                      <p className="text-sm text-blue-800">
+                        💡 科目をドラッグ&ドロップで移動できます。問題がある場合は自動的にエラーメッセージが表示されます。
+                      </p>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            )}
           </CardContent>
         </Card>
       </div>

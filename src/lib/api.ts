@@ -25,8 +25,7 @@ export interface TimetableSlot {
 }
 
 export interface TimetableGenerationRequest {
-  constraints: string[]
-  parameters?: Record<string, any>
+  options?: Record<string, any>
 }
 
 export interface TimetableValidationResult {
@@ -216,7 +215,8 @@ export interface Subject {
   id?: string
   name: string
   specialClassroom?: string
-  description?: string
+  weeklyLessons: number
+  targetGrades?: number[]
   order?: number
 }
 
@@ -324,6 +324,247 @@ export const conditionsApi = {
   },
 }
 
+// 時間割生成関連の型定義
+export interface TimetableClass {
+  grade: number
+  class: number
+  subject: string
+  teacher: string
+  classroom: string
+}
+
+export interface TimetablePeriod {
+  period: number
+  classes: TimetableClass[]
+}
+
+export interface GeneratedTimetable {
+  monday: TimetablePeriod[]
+  tuesday: TimetablePeriod[]
+  wednesday: TimetablePeriod[]
+  thursday: TimetablePeriod[]
+  friday: TimetablePeriod[]
+  saturday: TimetablePeriod[]
+}
+
+export interface TimetableData {
+  id: string
+  timetable: GeneratedTimetable
+  createdAt: string
+}
+
+export interface TimetableMetadata {
+  generatedAt: string
+  dataUsed: {
+    teachersCount: number
+    subjectsCount: number
+    classroomsCount: number
+  }
+}
+
+export interface TimetableGenerationResponse {
+  timetable: TimetableData
+  metadata: TimetableMetadata
+}
+
+// 時間割参照用の型定義
+export interface TimetableListItem {
+  id: string
+  name: string
+  createdAt: string
+  status: 'active' | 'draft'
+}
+
+export interface TimetableDetail {
+  id: string
+  name: string
+  createdAt: string
+  status: 'active' | 'draft'
+  timetable: {
+    timetable?: GeneratedTimetable
+  } & GeneratedTimetable
+}
+
+export interface TeacherSchedule {
+  teacherName: string
+  timetableId: string
+  schedule: {
+    monday: Array<{
+      period: number
+      grade: number
+      class: number
+      subject: string
+      classroom: string
+    }>
+    tuesday: Array<{
+      period: number
+      grade: number
+      class: number
+      subject: string
+      classroom: string
+    }>
+    wednesday: Array<{
+      period: number
+      grade: number
+      class: number
+      subject: string
+      classroom: string
+    }>
+    thursday: Array<{
+      period: number
+      grade: number
+      class: number
+      subject: string
+      classroom: string
+    }>
+    friday: Array<{
+      period: number
+      grade: number
+      class: number
+      subject: string
+      classroom: string
+    }>
+    saturday: Array<{
+      period: number
+      grade: number
+      class: number
+      subject: string
+      classroom: string
+    }>
+  }
+}
+
+export interface TimetableUpdateRequest {
+  name?: string
+  status?: 'active' | 'draft'
+  timetable?: GeneratedTimetable
+}
+
+// データ変換用ユーティリティ関数
+export const timetableUtils = {
+  // バックエンドの時間割データを表示用の形式に変換
+  convertToDisplayFormat(timetableData: GeneratedTimetable, grade: number, classNum: number) {
+    const displayData = []
+    
+    // 安全性チェック
+    if (!timetableData || typeof timetableData !== 'object') {
+      return []
+    }
+    
+    const maxPeriods = Math.max(
+      timetableData.monday?.length || 0,
+      timetableData.tuesday?.length || 0,
+      timetableData.wednesday?.length || 0,
+      timetableData.thursday?.length || 0,
+      timetableData.friday?.length || 0,
+      timetableData.saturday?.length || 0
+    )
+
+    for (let period = 1; period <= Math.max(maxPeriods, 6); period++) {
+      const rowData: any = {
+        period: period.toString(),
+        mon: null,
+        tue: null,
+        wed: null,
+        thu: null,
+        fri: null,
+        sat: null,
+      }
+
+      const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const
+      const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+
+      days.forEach((day, index) => {
+        const dayData = timetableData[day] || []
+        const periodData = dayData.find((p: any) => p.period === period)
+        if (periodData && periodData.classes) {
+          const classData = periodData.classes.find((c: any) => c.grade === grade && c.class === classNum)
+          if (classData) {
+            rowData[dayKeys[index]] = {
+              subject: classData.subject,
+              teacher: classData.teacher,
+            }
+          }
+        }
+      })
+
+      displayData.push(rowData)
+    }
+
+    return displayData
+  },
+
+  // 表示用の形式をバックエンドの時間割データに変換
+  convertToBackendFormat(displayData: any[], originalData: GeneratedTimetable, grade: number, classNum: number): GeneratedTimetable {
+    const result = JSON.parse(JSON.stringify(originalData)) // Deep copy
+
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'] as const
+    const dayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const
+
+    displayData.forEach((row) => {
+      const period = parseInt(row.period)
+      
+      days.forEach((day, index) => {
+        const dayKey = dayKeys[index]
+        let periodData = result[day].find((p: any) => p.period === period)
+        
+        if (!periodData) {
+          periodData = { period, classes: [] }
+          result[day].push(periodData)
+        }
+
+        // 該当する学年・クラスのデータを更新
+        const classIndex = periodData.classes.findIndex((c: any) => c.grade === grade && c.class === classNum)
+        
+        if (row[dayKey]) {
+          const classData = {
+            grade,
+            class: classNum,
+            subject: row[dayKey].subject,
+            teacher: row[dayKey].teacher,
+            classroom: `${grade}-${classNum}教室`, // デフォルト値
+          }
+          
+          if (classIndex >= 0) {
+            periodData.classes[classIndex] = classData
+          } else {
+            periodData.classes.push(classData)
+          }
+        } else {
+          // データが削除された場合
+          if (classIndex >= 0) {
+            periodData.classes.splice(classIndex, 1)
+          }
+        }
+      })
+    })
+
+    return result
+  },
+}
+
+export const timetableApi = {
+  async generateTimetable(request: TimetableGenerationRequest, options?: ApiOptions): Promise<TimetableGenerationResponse> {
+    return apiClient.post<TimetableGenerationResponse>('/api/frontend/school/timetable/generate', request, options)
+  },
+
+  async getTimetables(options?: ApiOptions): Promise<TimetableListItem[]> {
+    return apiClient.get<TimetableListItem[]>('/api/frontend/school/timetables', options)
+  },
+
+  async getTimetableDetail(timetableId: string, options?: ApiOptions): Promise<TimetableDetail> {
+    return apiClient.get<TimetableDetail>(`/api/frontend/school/timetables/${timetableId}`, options)
+  },
+
+  async updateTimetable(timetableId: string, request: TimetableUpdateRequest, options?: ApiOptions): Promise<TimetableDetail> {
+    return apiClient.put<TimetableDetail>(`/api/frontend/school/timetables/${timetableId}`, request, options)
+  },
+
+  async getTeacherSchedule(timetableId: string, teacherName: string, options?: ApiOptions): Promise<TeacherSchedule> {
+    return apiClient.get<TeacherSchedule>(`/api/frontend/school/timetables/${timetableId}/teachers/${encodeURIComponent(teacherName)}`, options)
+  },
+}
+
 export const teachersApi = {
   async getTeachers(options?: ApiOptions): Promise<Teacher[]> {
     return apiClient.get<Teacher[]>('/api/teachers', options)
@@ -360,12 +601,3 @@ export const classroomsApi = {
   },
 }
 
-export const timetableApi = {
-  async bulkGenerate(id: string, request: BulkGenerationRequest, options?: ApiOptions): Promise<BulkGenerationResult> {
-    return apiClient.post<BulkGenerationResult>(`/api/timetables/${id}/bulk-generate`, request, options)
-  },
-
-  async getClassSlots(timetableId: string, classId: string, options?: ApiOptions): Promise<TimetableSlot[]> {
-    return apiClient.get<TimetableSlot[]>(`/api/timetables/${timetableId}/slots/${classId}`, options)
-  },
-}

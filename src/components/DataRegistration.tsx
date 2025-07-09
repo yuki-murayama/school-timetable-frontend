@@ -28,6 +28,7 @@ import { Badge } from "./ui/badge"
 import { Textarea } from "./ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select"
+import { Checkbox } from "./ui/checkbox"
 import { Upload, Plus, Edit, Trash2, Save, Loader2, GripVertical } from "lucide-react"
 import { schoolApi, teacherApi, subjectApi, classroomApi, conditionsApi, type SchoolSettings, type Teacher, type Subject, type Classroom } from "../lib/api"
 import { useAuth } from "../hooks/use-auth"
@@ -112,7 +113,8 @@ export function DataRegistration() {
   const [subjectFormData, setSubjectFormData] = useState({
     name: "",
     specialClassroom: "",
-    description: ""
+    weeklyLessons: 1,
+    targetGrades: [] as number[]
   })
 
   // 教室情報用のstate
@@ -145,6 +147,40 @@ export function DataRegistration() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [showOfflineButton, setShowOfflineButton] = useState(false)
+  const [hasShownTimeoutError, setHasShownTimeoutError] = useState(false)
+
+  // Helper function to format target grades for display
+  const formatGrades = (targetGrades?: number[]) => {
+    if (!targetGrades || targetGrades.length === 0) {
+      return "全学年"
+    }
+    return targetGrades.map(grade => `${grade}年`).join(", ")
+  }
+
+  // Validation function for subject data
+  const validateSubject = (subject: typeof subjectFormData) => {
+    const errors = []
+    
+    if (!subject.name || !subject.name.trim()) {
+      errors.push("教科名を入力してください")
+    }
+    
+    if (subject.weeklyLessons < 1 || subject.weeklyLessons > 10) {
+      errors.push("週の授業数は1から10の範囲で入力してください")
+    }
+    
+    if (subject.targetGrades && Array.isArray(subject.targetGrades)) {
+      const validGrades = [1, 2, 3]
+      const invalidGrades = subject.targetGrades.filter(
+        (grade: number) => !validGrades.includes(grade)
+      )
+      if (invalidGrades.length > 0) {
+        errors.push("対象学年は1、2、3のいずれかを指定してください")
+      }
+    }
+    
+    return errors
+  }
 
   // 学校設定を読み込み
   useEffect(() => {
@@ -165,16 +201,19 @@ export function DataRegistration() {
         setShowOfflineButton(true)
       }, 5000)
       
-      // 10秒のタイムアウトを設定
+      // 10秒のタイムアウトを設定（一度だけ実行）
       const timeoutId = setTimeout(() => {
         console.warn('API call timeout after 10 seconds')
         setIsLoading(false)
         setShowOfflineButton(false)
-        toast({
-          title: "接続タイムアウト",
-          description: "デフォルト設定を使用します",
-          variant: "destructive",
-        })
+        if (!hasShownTimeoutError) {
+          setHasShownTimeoutError(true)
+          toast({
+            title: "接続タイムアウト",
+            description: "デフォルト設定を使用します",
+            variant: "destructive",
+          })
+        }
       }, 10000)
       
       try {
@@ -214,11 +253,14 @@ export function DataRegistration() {
           errorDescription += ` エラー: ${error.message}`
         }
         
-        toast({
-          title: "設定読み込みエラー",
-          description: errorDescription,
-          variant: "destructive",
-        })
+        if (!hasShownTimeoutError) {
+          setHasShownTimeoutError(true)
+          toast({
+            title: "設定読み込みエラー",
+            description: errorDescription,
+            variant: "destructive",
+          })
+        }
         
         // エラー時はデフォルト値を設定
         setClassSettings({
@@ -235,7 +277,7 @@ export function DataRegistration() {
     }
 
     loadSettings()
-  }, [token, toast])
+  }, [token])
 
   // 教師情報を読み込み
   useEffect(() => {
@@ -272,7 +314,7 @@ export function DataRegistration() {
     }
 
     loadTeachers()
-  }, [token, toast])
+  }, [token])
 
   // 教科情報を読み込み
   useEffect(() => {
@@ -309,7 +351,7 @@ export function DataRegistration() {
     }
 
     loadSubjects()
-  }, [token, toast])
+  }, [token])
 
   // 教室情報を読み込み
   useEffect(() => {
@@ -342,7 +384,7 @@ export function DataRegistration() {
     }
 
     loadClassrooms()
-  }, [token, toast])
+  }, [token])
 
   // 条件設定を読み込み
   useEffect(() => {
@@ -367,7 +409,7 @@ export function DataRegistration() {
     }
 
     loadConditions()
-  }, [token, toast])
+  }, [token])
 
   // 学校設定を保存
   const handleSaveSettings = async () => {
@@ -529,7 +571,7 @@ export function DataRegistration() {
   // 教科情報のCRUD機能
   const handleAddSubject = () => {
     setEditingSubject(null)
-    setSubjectFormData({ name: "", specialClassroom: "", description: "" })
+    setSubjectFormData({ name: "", specialClassroom: "", weeklyLessons: 1, targetGrades: [] })
     setIsSubjectDialogOpen(true)
   }
 
@@ -538,7 +580,8 @@ export function DataRegistration() {
     setSubjectFormData({
       name: subject.name,
       specialClassroom: subject.specialClassroom || "",
-      description: subject.description || ""
+      weeklyLessons: subject.weeklyLessons || 1,
+      targetGrades: subject.targetGrades || []
     })
     setIsSubjectDialogOpen(true)
   }
@@ -563,7 +606,18 @@ export function DataRegistration() {
   }
 
   const handleSaveSubject = async () => {
-    if (!token || !subjectFormData.name.trim()) return
+    if (!token) return
+    
+    // Validate subject data
+    const validationErrors = validateSubject(subjectFormData)
+    if (validationErrors.length > 0) {
+      toast({
+        title: "入力エラー",
+        description: validationErrors.join("\n"),
+        variant: "destructive",
+      })
+      return
+    }
     
     try {
       if (editingSubject?.id) {
@@ -585,7 +639,7 @@ export function DataRegistration() {
       }
       setIsSubjectDialogOpen(false)
       setEditingSubject(null)
-      setSubjectFormData({ name: "", specialClassroom: "", description: "" })
+      setSubjectFormData({ name: "", specialClassroom: "", weeklyLessons: 1, targetGrades: [] })
     } catch (error) {
       toast({
         title: "保存エラー",
@@ -1101,15 +1155,16 @@ export function DataRegistration() {
                       <TableRow>
                         <TableHead className="w-8"></TableHead>
                         <TableHead>教科名</TableHead>
+                        <TableHead>対象学年</TableHead>
                         <TableHead>専用教室</TableHead>
-                        <TableHead>説明</TableHead>
+                        <TableHead>1週間の授業数</TableHead>
                         <TableHead>操作</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {subjects.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={5} className="text-center text-gray-500 py-8">
+                          <TableCell colSpan={6} className="text-center text-gray-500 py-8">
                             教科情報が登録されていません
                           </TableCell>
                         </TableRow>
@@ -1119,6 +1174,9 @@ export function DataRegistration() {
                             <SortableRow key={subject.id} id={subject.id || ''}>
                               <TableCell className="font-medium">{subject.name}</TableCell>
                               <TableCell>
+                                <Badge variant="secondary">{formatGrades(subject.targetGrades)}</Badge>
+                              </TableCell>
+                              <TableCell>
                                 {subject.specialClassroom ? (
                                   <Badge variant="outline">{subject.specialClassroom}</Badge>
                                 ) : (
@@ -1126,8 +1184,8 @@ export function DataRegistration() {
                                 )}
                               </TableCell>
                               <TableCell>
-                                <span className="text-sm text-gray-600">
-                                  {subject.description || "説明なし"}
+                                <span className="text-sm font-semibold">
+                                  週{subject.weeklyLessons || 1}回
                                 </span>
                               </TableCell>
                               <TableCell>
@@ -1431,7 +1489,7 @@ export function DataRegistration() {
               {editingSubject ? "教科情報を編集" : "新しい教科を追加"}
             </DialogTitle>
             <DialogDescription>
-              教科名と専用教室、説明を設定してください
+              教科名、対象学年、専用教室、1週間の授業数を設定してください
             </DialogDescription>
           </DialogHeader>
           
@@ -1445,6 +1503,76 @@ export function DataRegistration() {
                 onChange={(e) => setSubjectFormData(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="教科名を入力"
               />
+            </div>
+
+            {/* 対象学年 */}
+            <div>
+              <Label>対象学年</Label>
+              <div className="flex flex-col gap-2 mt-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="grade-1"
+                    checked={subjectFormData.targetGrades.includes(1)}
+                    onCheckedChange={(checked: boolean) => {
+                      if (checked) {
+                        setSubjectFormData(prev => ({
+                          ...prev,
+                          targetGrades: [...prev.targetGrades, 1].sort()
+                        }))
+                      } else {
+                        setSubjectFormData(prev => ({
+                          ...prev,
+                          targetGrades: prev.targetGrades.filter(g => g !== 1)
+                        }))
+                      }
+                    }}
+                  />
+                  <Label htmlFor="grade-1">1年生</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="grade-2"
+                    checked={subjectFormData.targetGrades.includes(2)}
+                    onCheckedChange={(checked: boolean) => {
+                      if (checked) {
+                        setSubjectFormData(prev => ({
+                          ...prev,
+                          targetGrades: [...prev.targetGrades, 2].sort()
+                        }))
+                      } else {
+                        setSubjectFormData(prev => ({
+                          ...prev,
+                          targetGrades: prev.targetGrades.filter(g => g !== 2)
+                        }))
+                      }
+                    }}
+                  />
+                  <Label htmlFor="grade-2">2年生</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="grade-3"
+                    checked={subjectFormData.targetGrades.includes(3)}
+                    onCheckedChange={(checked: boolean) => {
+                      if (checked) {
+                        setSubjectFormData(prev => ({
+                          ...prev,
+                          targetGrades: [...prev.targetGrades, 3].sort()
+                        }))
+                      } else {
+                        setSubjectFormData(prev => ({
+                          ...prev,
+                          targetGrades: prev.targetGrades.filter(g => g !== 3)
+                        }))
+                      }
+                    }}
+                  />
+                  <Label htmlFor="grade-3">3年生</Label>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  選択しない場合は全学年が対象となります
+                </p>
+              </div>
             </div>
 
             {/* 専用教室 */}
@@ -1484,16 +1612,21 @@ export function DataRegistration() {
               )}
             </div>
 
-            {/* 説明 */}
+            {/* 1週間の授業数 */}
             <div>
-              <Label htmlFor="subject-description">説明（任意）</Label>
-              <Textarea
-                id="subject-description"
-                value={subjectFormData.description}
-                onChange={(e) => setSubjectFormData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="教科の詳細説明や特記事項"
-                rows={3}
+              <Label htmlFor="weekly-lessons">1週間の授業数</Label>
+              <Input
+                id="weekly-lessons"
+                type="number"
+                min="1"
+                max="10"
+                value={subjectFormData.weeklyLessons}
+                onChange={(e) => setSubjectFormData(prev => ({ ...prev, weeklyLessons: Number.parseInt(e.target.value) || 1 }))}
+                placeholder="週に何回授業を行うか"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                例：数学=6回、英語=4回、音楽=1回、体育=3回
+              </p>
             </div>
           </div>
 
@@ -1506,7 +1639,7 @@ export function DataRegistration() {
             </Button>
             <Button 
               onClick={handleSaveSubject}
-              disabled={!subjectFormData.name.trim()}
+              disabled={validateSubject(subjectFormData).length > 0}
             >
               <Save className="w-4 h-4 mr-2" />
               {editingSubject ? "更新" : "追加"}
