@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table"
 import { Input } from "./ui/input"
 import { Calendar, Edit, Eye, ArrowLeft, User, Loader2 } from "lucide-react"
-import { timetableApi, timetableUtils, type TimetableListItem, type TimetableDetail } from "../lib/api"
+import { timetableApi, timetableUtils, schoolApi, type TimetableListItem, type TimetableDetail, type SchoolSettings } from "../lib/api"
 import { useToast } from "../hooks/use-toast"
 
 interface TeacherSchedule {
@@ -41,6 +41,27 @@ export function TimetableView() {
   const [isLoadingTimetables, setIsLoadingTimetables] = useState(false)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  
+  // 学校設定
+  const [schoolSettings, setSchoolSettings] = useState<SchoolSettings>({
+    grade1Classes: 4,
+    grade2Classes: 3,
+    grade3Classes: 3,
+    dailyPeriods: 6,
+    saturdayPeriods: 4
+  })
+  const [selectedClass, setSelectedClass] = useState(1)
+  
+  // 現在選択されている学年のクラス数を取得
+  const getClassesForGrade = (grade: string): number => {
+    switch (grade) {
+      case '1': return schoolSettings.grade1Classes
+      case '2': return schoolSettings.grade2Classes
+      case '3': return schoolSettings.grade3Classes
+      default: return 4
+    }
+  }
+  
   // モックデータ（フォールバック用）
   const mockTimetableData = [
     {
@@ -108,6 +129,18 @@ export function TimetableView() {
   const [timetableData, setTimetableData] = useState(mockTimetableData)
   const [timetables, setTimetables] = useState<TimetableListItem[]>(mockTimetables)
 
+  // 学校設定を取得
+  const loadSchoolSettings = async () => {
+    try {
+      const settings = await schoolApi.getSettings()
+      setSchoolSettings(settings)
+      console.log("学校設定を取得:", settings)
+    } catch (error) {
+      console.error("学校設定の取得に失敗:", error)
+      // デフォルト値を使用
+    }
+  }
+
   // API統合のロジック
   const loadTimetables = async () => {
     setIsLoadingTimetables(true)
@@ -151,7 +184,7 @@ export function TimetableView() {
       const displayData = timetableUtils.convertToDisplayFormat(
         timetableData, 
         parseInt(selectedGrade), 
-        1
+        selectedClass
       )
       
       console.log("変換後の表示データ:", displayData)
@@ -171,8 +204,9 @@ export function TimetableView() {
     }
   }
 
-  // 初期化時に時間割一覧を取得
+  // 初期化時に学校設定と時間割一覧を取得
   useEffect(() => {
+    loadSchoolSettings()
     loadTimetables()
   }, [])
 
@@ -192,13 +226,20 @@ export function TimetableView() {
       const displayData = timetableUtils.convertToDisplayFormat(
         timetableData, 
         parseInt(selectedGrade), 
-        1
+        selectedClass
       )
       
       console.log("学年変更後の表示データ:", displayData)
       setTimetableData(displayData)
     }
-  }, [selectedGrade, selectedTimetableDetail])
+  }, [selectedGrade, selectedClass, selectedTimetableDetail])
+  
+  // 学年が変更されたときにクラス選択をリセット
+  useEffect(() => {
+    if (selectedClass > getClassesForGrade(selectedGrade)) {
+      setSelectedClass(1)
+    }
+  }, [selectedGrade, schoolSettings])
 
   // 教師ごとの時間割データを生成する関数
   const generateTeacherSchedule = (teacherName: string): TeacherSchedule[] => {
@@ -569,17 +610,19 @@ export function TimetableView() {
                 <span>時間割詳細を読み込んでいます...</span>
               </div>
             ) : (
-              <Tabs defaultValue="class1">
+              <Tabs value={`class${selectedClass}`} onValueChange={(value) => setSelectedClass(parseInt(value.replace('class', '')))}>
                 <TabsList className="mb-4">
-                  <TabsTrigger value="class1">1組</TabsTrigger>
-                  <TabsTrigger value="class2">2組</TabsTrigger>
-                  <TabsTrigger value="class3">3組</TabsTrigger>
-                  <TabsTrigger value="class4">4組</TabsTrigger>
+                  {Array.from({ length: getClassesForGrade(selectedGrade) }, (_, i) => (
+                    <TabsTrigger key={i + 1} value={`class${i + 1}`}>
+                      {i + 1}組
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
 
-                <TabsContent value="class1">
-                  <div className="overflow-x-auto">
-                    <Table>
+                {Array.from({ length: getClassesForGrade(selectedGrade) }, (_, i) => (
+                  <TabsContent key={i + 1} value={`class${i + 1}`}>
+                    <div className="overflow-x-auto">
+                      <Table>
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-16">時限</TableHead>
@@ -649,8 +692,9 @@ export function TimetableView() {
                         💡 科目をドラッグ&ドロップで移動できます。問題がある場合は自動的にエラーメッセージが表示されます。
                       </p>
                     </div>
-                  )}
-                </TabsContent>
+                    )}
+                  </TabsContent>
+                ))}
               </Tabs>
             )}
           </CardContent>
