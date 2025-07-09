@@ -444,10 +444,20 @@ export interface TimetableUpdateRequest {
 export const timetableUtils = {
   // バックエンドの時間割データを表示用の形式に変換
   convertToDisplayFormat(timetableData: GeneratedTimetable, grade: number, classNum: number) {
+    console.log("convertToDisplayFormat開始:", {
+      grade: grade,
+      classNum: classNum,
+      timetableDataType: typeof timetableData,
+      timetableDataKeys: timetableData ? Object.keys(timetableData) : null,
+      mondayExists: !!timetableData?.monday,
+      mondayLength: timetableData?.monday?.length
+    })
+    
     const displayData = []
     
     // 安全性チェック
     if (!timetableData || typeof timetableData !== 'object') {
+      console.log("時間割データが無効です")
       return []
     }
     
@@ -476,13 +486,40 @@ export const timetableUtils = {
 
       days.forEach((day, index) => {
         const dayData = timetableData[day] || []
-        const periodData = dayData.find((p: any) => p.period === period)
+        const periodData = dayData.find((p: any) => Number(p.period) === Number(period))
+        
+        if (period === 1 && day === 'monday') {
+          console.log(`${day}曜日${period}時限のデータ検索:`, {
+            dayData: dayData,
+            periodData: periodData,
+            searchingForPeriod: period,
+            foundPeriod: periodData?.period,
+            classesCount: periodData?.classes?.length
+          })
+        }
+        
         if (periodData && periodData.classes) {
-          const classData = periodData.classes.find((c: any) => c.grade === grade && c.class === classNum)
+          const classData = periodData.classes.find((c: any) => 
+            Number(c.grade) === Number(grade) && Number(c.class) === Number(classNum)
+          )
+          
+          if (period === 1 && day === 'monday') {
+            console.log(`${day}曜日${period}時限のクラスデータ検索:`, {
+              searchingForGrade: grade,
+              searchingForClass: classNum,
+              allClasses: periodData.classes,
+              foundClassData: classData
+            })
+          }
+          
           if (classData) {
             rowData[dayKeys[index]] = {
               subject: classData.subject,
               teacher: classData.teacher,
+            }
+            
+            if (period === 1 && day === 'monday') {
+              console.log(`${day}曜日${period}時限に授業を設定:`, classData)
             }
           }
         }
@@ -490,6 +527,18 @@ export const timetableUtils = {
 
       displayData.push(rowData)
     }
+    
+    // 結果のサマリーを出力
+    const nonEmptyRows = displayData.filter(row => 
+      Object.values(row).some(cell => cell !== null && cell !== row.period)
+    )
+    
+    console.log("変換結果サマリー:", {
+      totalRows: displayData.length,
+      nonEmptyRows: nonEmptyRows.length,
+      maxPeriods: maxPeriods,
+      sampleRow: displayData[0]
+    })
 
     return displayData
   },

@@ -138,11 +138,23 @@ export function TimetableView() {
       
       // 時間割データを表示用に変換（二重ネスト対応）
       const timetableData = result.timetable?.timetable || result.timetable
+      
+      // デバッグ情報を出力
+      console.log("時間割詳細データ:", {
+        rawResult: result,
+        timetableData: timetableData,
+        selectedGrade: selectedGrade,
+        mondayData: timetableData?.monday,
+        mondayLength: timetableData?.monday?.length
+      })
+      
       const displayData = timetableUtils.convertToDisplayFormat(
         timetableData, 
         parseInt(selectedGrade), 
         1
       )
+      
+      console.log("変換後の表示データ:", displayData)
       setTimetableData(displayData)
       
     } catch (error) {
@@ -169,11 +181,21 @@ export function TimetableView() {
     if (selectedTimetableDetail) {
       // 時間割データを表示用に変換（二重ネスト対応）
       const timetableData = selectedTimetableDetail.timetable?.timetable || selectedTimetableDetail.timetable
+      
+      console.log("学年変更時のデータ変換:", {
+        selectedGrade: selectedGrade,
+        gradeAsNumber: parseInt(selectedGrade),
+        timetableData: timetableData,
+        mondayFirstPeriod: timetableData?.monday?.[0]
+      })
+      
       const displayData = timetableUtils.convertToDisplayFormat(
         timetableData, 
         parseInt(selectedGrade), 
         1
       )
+      
+      console.log("学年変更後の表示データ:", displayData)
       setTimetableData(displayData)
     }
   }, [selectedGrade, selectedTimetableDetail])
