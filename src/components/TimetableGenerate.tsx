@@ -56,6 +56,8 @@ export function TimetableGenerate() {
         options.simpleCondition = simpleCondition
       }
 
+      console.log("送信するリクエストデータ:", { options })
+
       const result = await timetableApi.generateTimetable({ options }, { token })
       
       setGenerationResult(result)

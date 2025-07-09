@@ -329,7 +329,11 @@ export function DataRegistration() {
       try {
         const subjectsData = await subjectApi.getSubjects({ token })
         // Sort by order field, then by name if no order
-        const sortedSubjects = subjectsData.sort((a, b) => {
+        // Also ensure targetGrades field exists
+        const sortedSubjects = subjectsData.map(subject => ({
+          ...subject,
+          targetGrades: subject.targetGrades || []
+        })).sort((a, b) => {
           if (a.order != null && b.order != null) {
             return a.order - b.order
           }
@@ -337,6 +341,7 @@ export function DataRegistration() {
           if (b.order != null) return 1
           return a.name.localeCompare(b.name)
         })
+        console.log("読み込んだ教科データ:", sortedSubjects)
         setSubjects(sortedSubjects)
       } catch (error) {
         console.error('Error loading subjects:', error)
@@ -620,9 +625,18 @@ export function DataRegistration() {
     }
     
     try {
+      // Prepare data for API - normalize targetGrades
+      const apiData = {
+        ...subjectFormData,
+        // Send empty targetGrades as empty array, not undefined
+        targetGrades: subjectFormData.targetGrades.length > 0 ? subjectFormData.targetGrades : []
+      }
+      
+      console.log("送信する教科データ:", apiData)
+      
       if (editingSubject?.id) {
         // 更新
-        const updatedSubject = await subjectApi.updateSubject(editingSubject.id, subjectFormData, { token })
+        const updatedSubject = await subjectApi.updateSubject(editingSubject.id, apiData, { token })
         setSubjects(subjects.map(s => s.id === editingSubject.id ? updatedSubject : s))
         toast({
           title: "更新完了",
@@ -630,7 +644,7 @@ export function DataRegistration() {
         })
       } else {
         // 新規作成
-        const newSubject = await subjectApi.createSubject(subjectFormData, { token })
+        const newSubject = await subjectApi.createSubject(apiData, { token })
         setSubjects([...subjects, newSubject])
         toast({
           title: "追加完了",
@@ -641,6 +655,7 @@ export function DataRegistration() {
       setEditingSubject(null)
       setSubjectFormData({ name: "", specialClassroom: "", weeklyLessons: 1, targetGrades: [] })
     } catch (error) {
+      console.error("教科保存エラー:", error)
       toast({
         title: "保存エラー",
         description: "教科情報の保存に失敗しました",
@@ -654,12 +669,21 @@ export function DataRegistration() {
     
     setIsSubjectsSaving(true)
     try {
-      await subjectApi.saveSubjects(subjects, { token })
+      // Normalize all subjects data before sending
+      const normalizedSubjects = subjects.map(subject => ({
+        ...subject,
+        targetGrades: subject.targetGrades || []
+      }))
+      
+      console.log("一括保存する教科データ:", normalizedSubjects)
+      
+      await subjectApi.saveSubjects(normalizedSubjects, { token })
       toast({
         title: "保存完了",
         description: "全ての教科情報を保存しました",
       })
     } catch (error) {
+      console.error("教科一括保存エラー:", error)
       toast({
         title: "保存エラー",
         description: "教科情報の保存に失敗しました",
@@ -837,6 +861,7 @@ export function DataRegistration() {
         const itemsWithOrder = newItems.map((item, index) => ({
           ...item,
           order: index,
+          targetGrades: item.targetGrades || [] // Ensure targetGrades field exists
         }))
         
         // Save order changes to backend
